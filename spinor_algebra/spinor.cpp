@@ -1,55 +1,6 @@
 #include "spinor_header.h"
-#include <numeric>
 
 namespace Spinor{
-
-    struct Polynomial {
-        std::map<int, spinor_sum> terms;
-        int highest_order = 0;
-        spinor var;
-        
-        Polynomial(const spinor_sum &sum, const spinor &var) {
-            this->var = var;
-            for (spinor_product prod : sum.terms) {
-                int order = 0;
-                for(spinor s : prod.numerator){
-                    if (is_similar_spinor(s,var)){
-                        order += 1;
-                    }
-                }
-
-                terms[order].terms.push_back(prod);
-
-                if (order > highest_order){
-                    highest_order = order;
-                }
-            }
-        }
-
-        Polynomial operator-(const spinor_sum &sum){
-            Polynomial result = *this;
-            for (spinor_product prod : sum.terms) {
-                int order = 0;
-                for(spinor s : prod.numerator){
-                    if (is_similar_spinor(s,var)){
-                        order += 1;
-                    }
-                }
-
-                result.terms[order] = result.terms[order] - prod;
-            }
-            return result;
-        }
-
-        bool is_null(){
-            for(int i = 0; i < highest_order; i++){
-                if(!terms[i].is_null){
-                    return false;
-                }
-            }
-            return true;
-        }
-    };
 
     // ---------- Addition ----------
     spinor_sum operator+(const spinor &s1, const spinor &s2){
@@ -1293,37 +1244,12 @@ namespace Spinor{
     spinor spinor5(3,4,'a');
     spinor spinor6(1,4,'b');
     auto new_spinor = ((2*spinor1+3*spinor2)*(2*spinor1+3*spinor2)*(2*spinor1+3*spinor2))/((2*spinor1 + 3*spinor2)*(spinor3+4*spinor4));
-    //((2*spinor2 + spinor3) * (3*spinor1 + spinor4) )/(2 * spinor2 + spinor3);
-    //((2*spinor2*spinor4 + 3*spinor3 * spinor1 + spinor3 * spinor4+ 6*spinor2*spinor1))/(2 * spinor2 + spinor3);
+
     std::string line = "(1,34)";
 
     auto outputs = tokenize(line);
 
     std::cout << new_spinor << std::endl;
-
-    //for (int i = 0; i < outputs.size(); ++i){
-    //    std::cout << outputs[i] << " ";
-    //}
-
-    //spinor spinor5 = parse_spinor(line);
-
-    //std::cout << spinor5 << std::endl;
-    //factorized_spinor spinf(new_spinor);
-
-    //std::vector<factor_struct> factors = find_common_spinors(new_spinor);
-    // auto factored_spinor = factor(spinf,factors);
-    //std::cout << factored_spinor << std::endl;
-
-
-
-    //for(factor_struct f :factors){
-    //    std::cout << f.factor << ", count: " << f.factor_count << std::endl;
-    //}
-
-
-
-
-    //std::cout << new_spinor.terms[0] << std::endl;
 
     return 0;
     }

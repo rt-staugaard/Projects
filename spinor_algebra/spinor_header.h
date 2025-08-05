@@ -133,9 +133,6 @@ namespace Spinor{
         }
     };
 
-    struct Polynomial;
-    
-
     spinor_sum operator+(const spinor &s1, const spinor &s2);
     spinor_sum operator+(const spinor_product &p1, const spinor &s2);
     spinor_sum operator+(const spinor &s1,const spinor_product &p2);
@@ -241,7 +238,7 @@ namespace Spinor{
     void order(spinor_product &p);
     void reduce_product(spinor_product &p);
 
-    // 
+    // Factorization functions
     std::vector<factor_struct> find_common_spinors(const spinor_sum &sum);
     int gcd(int a, int b);
     std::vector<int> find_unique_gcds(const spinor_sum &sum);
@@ -254,6 +251,54 @@ namespace Spinor{
     factorized_spinor factor(const spinor &s, const spinor_sum &sum);
     void reduce_fraction(spinor_fraction &f);
 
+    struct Polynomial {
+        std::map<int, spinor_sum> terms;
+        int highest_order = 0;
+        spinor var;
+        
+        Polynomial(const spinor_sum &sum, const spinor &var) {
+            this->var = var;
+            for (spinor_product prod : sum.terms) {
+                int order = 0;
+                for(spinor s : prod.numerator){
+                    if (is_similar_spinor(s,var)){
+                        order += 1;
+                    }
+                }
+
+                terms[order].terms.push_back(prod);
+
+                if (order > highest_order){
+                    highest_order = order;
+                }
+            }
+        }
+
+        Polynomial operator-(const spinor_sum &sum){
+            Polynomial result = *this;
+            for (spinor_product prod : sum.terms) {
+                int order = 0;
+                for(spinor s : prod.numerator){
+                    if (is_similar_spinor(s,var)){
+                        order += 1;
+                    }
+                }
+
+                result.terms[order] = result.terms[order] - prod;
+            }
+            return result;
+        }
+
+        bool is_null(){
+            for(int i = 0; i < highest_order; i++){
+                if(!terms[i].is_null){
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
 
     std::string display_spinor(const spinor& s);
 
@@ -264,12 +309,5 @@ namespace Spinor{
     std::ostream& operator<<(std::ostream& os,const factorized_spinor& f);
 
     std::vector<std::string> tokenize(const std::string &input);
-
     spinor parse_spinor(const std::string &token);
-
-    //missing
-    spinor_product parse_spinor_product(const std::vector<std::string> &tokens, size_t &pos);
-    spinor_sum parse_spinor_sum(const std::vector<std::string> &tokens);
-    spinor_fraction parse_spinor_fraction(const std::vector<std::string> &tokens);
-
 }
