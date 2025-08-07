@@ -50,7 +50,8 @@ namespace Spinor{
         std::vector<spinor_product> terms;
         bool is_null = false;
 
-        spinor_sum(){}
+        spinor_sum(){
+        }
 
         spinor_sum(const spinor_product &p1, const spinor_product &p2){
             this->terms.push_back(p1);
@@ -233,6 +234,7 @@ namespace Spinor{
     bool is_similar_spinor_vector(const std::vector<spinor> &vec1, const std::vector<spinor> &vec2);
     bool is_similar(const spinor_product p1, const spinor_product p2);
     bool is_spinor_in_numerator(const spinor_product &p, const spinor &s);
+    bool is_number(std::string string);
 
     void cancellation(spinor_sum &sum);
     void order(spinor_product &p);
@@ -251,6 +253,7 @@ namespace Spinor{
     factorized_spinor factor(const spinor &s, const spinor_sum &sum);
     void reduce_fraction(spinor_fraction &f);
 
+    // Struct for long division
     struct Polynomial {
         std::map<int, spinor_sum> terms;
         int highest_order = 0;
@@ -310,4 +313,5 @@ namespace Spinor{
 
     std::vector<std::string> tokenize(const std::string &input);
     spinor parse_spinor(const std::string &token);
+
 }

@@ -756,7 +756,7 @@ namespace Spinor{
         }
 
     }
-// ---------- Factorization (only works for linear expressions with integer coefficients) ----------
+// ---------- Factorization (only works for linear factors with integer coefficients) ----------
 
     bool is_spinor_in_numerator(const spinor_product &p, const spinor &s){
         if(std::find(p.numerator.begin(),p.numerator.end(),s) != p.numerator.end()){
@@ -851,6 +851,7 @@ namespace Spinor{
         return permutations;
     }
 
+    // Checks if the expression is a product of the same factor
     bool is_perfect_product(const spinor_sum &sum, const int &highest_order, spinor_sum &factor,spinor_sum &leftover_sum){
         spinor_sum perfect_product; 
         std::vector<int> coefficients;
@@ -890,6 +891,7 @@ namespace Spinor{
         return false;
     }
 
+    // Computes Long division to see if a given factores divides the expression
     bool is_factor(Polynomial poly, const spinor_sum & sum, const spinor_sum &factor, spinor_sum &leftover){        
         spinor_sum leftover_sum;
 
@@ -928,12 +930,12 @@ namespace Spinor{
                 }
             }
 
-            // Make the current entry into polynomial form to do long division
+            // Make the current entry into a 'polynomial' to do long division
             spinor var = candidate_factor.terms[0].numerator[0];
             var.factor = candidate_factor.terms[0].factor;
             Polynomial poly(sum.remainder,var);
             
-            // Try factoring into perfect square
+            // Try factoring into perfect square (i.e. is a product of the same factor)
             spinor_sum leftover;
             spinor_sum candidate = candidate_factor;
             if(is_perfect_product(sum.remainder,poly.highest_order,candidate,leftover)){      
@@ -942,7 +944,7 @@ namespace Spinor{
                 return factor(sum,possible_factors);
             }
 
-            // Try all permutations of GCD assignments
+            // Try all permutations of GCD assignments as possible coefficients
             for (std::vector<int> perms : permutations){
                 spinor_sum permuted_candidate = candidate_factor;
 
@@ -958,17 +960,18 @@ namespace Spinor{
             }
         }
 
+        // Checks if we have looked at every starting factor
         if(sum.order == 0){
             possible_factors.erase(possible_factors.begin());
             sum.order = sum.original_sum_length;
         }
+        // Rotates into another starting factor
         else{
             std::rotate(possible_factors.begin(), possible_factors.end() - 1, possible_factors.end());
             sum.order -= 1;
         }
 
         return factor(sum,possible_factors);
-
     }
 
     void flatten_fraction(spinor_fraction &f){
@@ -1143,7 +1146,6 @@ namespace Spinor{
             else{
                 os << "1";
             }
-                os << "1";
         }
         else if(f.numerator.terms.empty()){
             os << "1 / ";
@@ -1182,18 +1184,18 @@ namespace Spinor{
         for (char c : input){  
             if (std::isspace(c)) continue;
 
-            if (std::isdigit(c) or c == ',' or c == '[' or c == ']') {
+            if (std::isdigit(c) or c == ',') {
                 current_string += c;
             }
-            else if (c == '(' ){
+            else if (c == '(' or c == '['){
                 if (!current_string.empty()){
                     tokens.push_back(current_string);
                     current_string.clear();
                 }
                 current_string += c;
             } 
-            else if (c == ')' ){
-                if (!current_string.empty() and current_string.back() == ')'){
+            else if (c == ')' or c == ']'){
+                if (!current_string.empty() and (current_string.back() == ')' or current_string.back() == ']')){
                     tokens.push_back(current_string);
                     current_string.clear();
                 }
@@ -1218,10 +1220,13 @@ namespace Spinor{
     spinor parse_spinor(const std::string &token){
         spinor s;
 
-        if (token.front() == '('){
+        if (token.front() == '(' and token.back() == ')'){
             s.bracket = 'a';
         }
-        else {s.bracket = 'b';}
+        else if (token.front() == '[' and token.back() == ']'){
+            s.bracket = 'b';
+        }
+        else {return s;}
 
         auto it = std::find(token.begin(),token.end(),',');
 
@@ -1233,6 +1238,123 @@ namespace Spinor{
         return s;
     }
 
+    bool is_number(std::string string){
+        for(char c : string){
+            if(!std::isdigit(c)){
+                return false;
+            }
+        }
+        return true;
+    }
+
+    spinor_fraction parse_string(const std::string &input_string){
+        std::map<int,std::vector<std::string>> parent_seperated_terms;
+
+        std::vector<std::string> tokens = tokenize(input_string);
+        int parenthesis_level = 0;
+        int deepest_level = parenthesis_level;
+        for(std::string token : tokens){
+            if (token.size() == 1){
+                char current_operator = token[0];
+                switch (current_operator){
+                case '(':
+                    parenthesis_level += 1;
+                    parent_seperated_terms[parenthesis_level - 1].push_back("term");
+
+                    if(parenthesis_level > deepest_level){
+                        deepest_level = parenthesis_level;
+                    }
+                    break;
+
+                case ')':
+                    parenthesis_level -= 1;
+                    break;
+
+                default:
+                    parent_seperated_terms[parenthesis_level].push_back(token);
+                    break;
+                }
+            }
+            else {
+                parent_seperated_terms[parenthesis_level].push_back(token);
+            }    
+        }
+
+        spinor_fraction level_expression[deepest_level+1];
+        
+        for(int i = deepest_level; i >= 0; --i){
+            std::vector<spinor_fraction> spinor_token;
+            std::vector<std::string> additional_operators; 
+            char current_operator = '*';
+            spinor_fraction current_spinor;
+            spinor_fraction current_expression;
+            double current_factor = 1;
+
+            for (const std::string &token : parent_seperated_terms[i]){
+                if (token == "+" or token == "-" or token == "*" or token == "/"){
+                    current_operator = token[0];
+
+                    if (current_operator == '+' or current_operator == '-') {
+                        current_spinor = current_factor * current_spinor;
+                        spinor_token.push_back(current_spinor);
+                        additional_operators.push_back(token);
+                        current_spinor = spinor_fraction(); 
+                        current_factor = 1;
+                    }
+                    continue;            
+                }
+
+                spinor_fraction expression;
+                if (token == "term"){
+                    expression = level_expression[i+1];
+                }
+                else if (is_number(token)){
+                    current_factor = std::stoi(token);
+                }
+                else{
+                    expression = parse_spinor(token);
+                }
+                switch (current_operator){
+                    case '/':
+                    current_spinor = current_spinor / expression;
+                    break; 
+
+                    // Multiplication is default, since no '*' would imply multiplication
+                    case '*':
+                    current_spinor = current_spinor * expression; 
+                    break;
+
+                    default:
+                    current_spinor = expression;
+                    //if (current_spinor.numerator.terms.empty() and current_spinor.denominator.terms.empty()){
+                    //    current_spinor = expression;
+                    //    std::cout << current_spinor << std::endl;
+                    //}
+                    //else {current_spinor = current_spinor * expression;}
+                    break;
+                }
+
+            }
+            spinor_token.push_back(current_spinor);
+
+            current_expression = spinor_token[0];
+            for (int j = 1; j < spinor_token.size(); ++j){
+                char operation = additional_operators[j-1][0];
+                switch (operation){
+                    case '+':
+                    current_expression = current_expression + spinor_token[j];
+                    break;
+
+                    case '-':
+                    current_expression = current_expression - spinor_token[j];
+                    break;
+                }
+            }
+            level_expression[i] = current_expression;
+
+        }
+        return level_expression[0];
+    }
 }
 
  int main(){
@@ -1247,9 +1369,16 @@ namespace Spinor{
 
     std::string line = "(1,34)";
 
-    auto outputs = tokenize(line);
+    std::string expression = "(1,2) - ( (3,2) +  ( [2,5]-(3,5) )/(5,2) )";
+    auto outputs = tokenize(expression);
 
-    std::cout << new_spinor << std::endl;
+    //for(std::string s : outputs){
+    //    std::cout << s << std::endl;
+    //}
+
+    spinor_fraction spin = parse_string(expression);
+
+    std::cout << spin << std::endl;
 
     return 0;
     }
