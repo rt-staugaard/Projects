@@ -1,0 +1,46 @@
+{
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "Build with GLFW + GLAD",
+            "command": "/usr/bin/clang++",
+            "args": [
+                "-std=c++17",
+                "-arch",
+                "arm64",
+                "-fcolor-diagnostics",
+                "-fansi-escape-codes",
+                "-g",
+                "${file}",
+                "${workspaceFolder}/dependencies/glad/src/glad.c",
+                "-I${workspaceFolder}/dependencies/glad/include",
+                "-I${workspaceFolder}/dependencies/glm",
+                "-I/opt/homebrew/include",
+                "-L/opt/homebrew/lib",
+                "-lglfw",
+                "-framework",
+                "OpenGL",
+                "-framework",
+                "Cocoa",
+                "-framework",
+                "IOKit",
+                "-framework",
+                "CoreVideo",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Build project with GLFW and GLAD"
+        }
+    ],
+    "version": "2.0.0"
+}
