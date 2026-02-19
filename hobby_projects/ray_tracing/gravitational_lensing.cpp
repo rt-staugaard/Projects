@@ -13,14 +13,37 @@ unsigned int make_shader(const std::string& vertex_filepath, const std::string f
 unsigned int make_module(const std::string& filepath, unsigned int module_type);
 void send_data(std::vector<float> &data, unsigned int &VAO, unsigned int &VBO);
 
-class Body{
+
+// For now specifically Schwarzchild spacetime
+struct spacetime{
+    float M = 1.0;
+    float G = 1.0;
+
+    glm::mat4 get_metric(glm::vec4 &pos){
+        float r = pos.y;
+        float sinTheta = glm::sin(pos.z);
+
+        glm::mat4 metric(0.0f);
+
+        float r_s = (2 * G * M)/r;
+
+        metric[0][0] = -(1 - r_s);
+        metric[1][1] = 1/(1 - r_s);
+        metric[0][0] = r * r;
+        metric[0][0] = r * r * sinTheta * sinTheta;
+
+        return metric; 
+    }
+
+};
+
+class Gravitational_Object{
     public:
-    float mass;
     glm::vec3 pos;
     glm::vec3 vel;
+    float step_size = 0.1;
 
-    Body(float mass, glm::vec3 pos, glm::vec3 vel){
-        this->mass = mass;
+    Gravitational_Object(glm::vec3 pos, glm::vec3 vel){
         this->pos = pos;
         this->vel = vel;
     }
@@ -29,7 +52,37 @@ class Body{
         vel += acc * dt;
         pos += vel * dt;
     }
+
+    glm::mat4 get_partial_derivative(glm::vec4 pos, int sigma){
+        spacetime spacetime;
+
+        
+
+
+
+        glm::mat4 metric = spacetime.get_metric(pos);
+
+
+        glm::mat4 partial_derivative;
+
+
+    }
+
 };
+
+class Stellar_Object : public Gravitational_Object{
+    public:
+    float mass;
+
+    Stellar_Object(float mass, glm::vec3 pos, glm::vec3 vel): Gravitational_Object(pos, vel), mass(mass) 
+    {this->mass = mass;}
+};
+
+class Ray : public Gravitational_Object{
+    Ray(glm::vec3 pos, glm::vec3 vel) : Gravitational_Object(pos, vel) {}
+};
+
+
 
 
 int main(void)
@@ -46,7 +99,7 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 
-    window = glfwCreateWindow(640, 480, "Hello World", NULL, NULL);
+    window = glfwCreateWindow(640, 480, "Simulation Window", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
@@ -64,8 +117,8 @@ int main(void)
     std::cout << glGetString(GL_VERSION) << std::endl;
     glEnable(GL_PROGRAM_POINT_SIZE);
 
-    Body obj1 = Body(1, glm::vec3 {-0.8, 0.0f, 0.0f}, glm::vec3 {0.0f, 0.5, 0.0f});
-    Body obj2 = Body(5, glm::vec3 {0.0f, 0.0f, 0.0f}, glm::vec3 {0.0f, 0.0f, 0.0f});
+    Stellar_Object obj1 = Stellar_Object(1, glm::vec3 {-0.8, 0.0f, 0.0f}, glm::vec3 {0.0f, 0.5, 0.0f});
+    Stellar_Object obj2 = Stellar_Object(5, glm::vec3 {0.0f, 0.0f, 0.0f}, glm::vec3 {0.0f, 0.0f, 0.0f});
 
     std::vector<float> data = {0.0f, 0.0f, 0.0f};  
         
