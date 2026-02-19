@@ -9,10 +9,84 @@
 #include <fstream>
 #include <sstream>
 
-unsigned int make_shader(const std::string& vertex_filepath, const std::string fragment_filepath);
-unsigned int make_module(const std::string& filepath, unsigned int module_type);
-void send_geometry(const std::vector<glm::vec4>& vertices, unsigned int& VAO, unsigned int& VBO);
-void send_geometry_with_size(const std::vector<glm::vec4>& vertices, unsigned int& VAO, unsigned int& VBO);
+
+class Shader{
+    private:
+    uint shaderProgram;
+
+    public:
+
+    Shader() : shaderProgram(0) {}
+
+    Shader(const std::string& vertex_filepath, const std::string fragment_filepath){
+        make_shader_program(vertex_filepath, fragment_filepath);
+    }
+
+    uint make_shader_module(const std::string& filepath, unsigned int module_type){
+        std::ifstream file(filepath);
+        std::stringstream bufferedLines;
+        std::string line;
+
+        while(std::getline(file, line)){
+           bufferedLines << line << "\n";
+        }
+
+        std::string sourceCode = bufferedLines.str();
+        const char* shaderSource = sourceCode.c_str();
+        bufferedLines.str("");
+        file.close();
+    
+        unsigned int shaderModule = glCreateShader(module_type);
+        glShaderSource(shaderModule, 1, &shaderSource, NULL);
+        glCompileShader(shaderModule);
+
+        int success;
+        glGetShaderiv(shaderModule, GL_COMPILE_STATUS, &success);
+        if (!success){
+            char errorLog[1024];
+            glGetShaderInfoLog(shaderModule, 1024, NULL, errorLog);
+            std::cout << "Shader Module compilation error:\n" << errorLog << std::endl;
+        }
+
+        return shaderModule;
+    }   
+
+    void make_shader_program(const std::string& vertex_filepath, const std::string fragment_filepath){
+        std::vector<unsigned int> modules;
+        modules.push_back(make_shader_module(vertex_filepath, GL_VERTEX_SHADER));
+        modules.push_back(make_shader_module(fragment_filepath, GL_FRAGMENT_SHADER));
+        
+        unsigned int shaderProgram = glCreateProgram();
+        for (unsigned int shaderModule : modules){
+            glAttachShader(shaderProgram, shaderModule);
+        }
+        
+        glLinkProgram(shaderProgram);
+
+        int success;
+        glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+        if (!success){
+            char errorLog[1024];
+            glGetProgramInfoLog(shaderProgram, 1024, NULL, errorLog);
+            std::cout << "Shader Program compilation error:\n" << errorLog << std::endl;
+        }
+
+        for (unsigned int shaderModule : modules){
+            glDeleteShader(shaderModule);
+        }
+        this->shaderProgram = shaderProgram;
+    }
+
+    void use(){
+        glUseProgram(shaderProgram);
+    }
+
+    uint getID() const { return shaderProgram; }
+
+    ~Shader() {
+        glDeleteProgram(shaderProgram);
+    }
+};
 
 struct State{
     glm::vec4 pos;
@@ -143,8 +217,24 @@ class Gravitational_Object{
                 }
             }
         }
-        change.pos[3] = 0;
-        change.vel[3] = 0;
+
+        glm::mat4 metric = space.get_metric(current);
+        float ds_squared = metric[0][0] * change.vel[0] * change.vel[0];
+        for (int i = 0; i < 3; ++i){
+            for (int j = 0; j < 3; ++j){
+                ds_squared += metric[i + 1][j + 1] * change.vel[i + 1] * change.vel[j + 1];
+            }
+        }
+
+        if (glm::abs(ds_squared) > 1.e5){
+            float magnitude = glm::sqrt(metric[1][1]*change.vel[1]*change.vel[1] + metric[2][2]*change.vel[2]*change.vel[2] + metric[3][3]*change.vel[3]*change.vel[3]);
+            float target_magnitude = glm::sqrt(metric[0][0] * change.vel[0] * change.vel[0]);
+            float scale = target_magnitude / magnitude;
+
+            change.vel[1] = scale * change.vel[1];
+            change.vel[2] = scale * change.vel[2];
+            change.vel[3] = scale * change.vel[3];
+        }
 
         return change;
     }
@@ -162,68 +252,174 @@ class Gravitational_Object{
 
 class Stellar_Object : public Gravitational_Object {
 public:
-    float mass;
-    unsigned int shader;
-    int colorLoc, projLoc;
+    private:
+    uint VAO, VBO, EBO;
+    std::shared_ptr<Shader> shader;
+    std::shared_ptr<glm::mat4> model;
+    std::vector<float> sphereVertices;
+    std::vector<uint> indices;
+    uint modelLoc;
 
-    Stellar_Object(float mass, glm::vec4 pos, glm::vec4 vel) 
-        : Gravitational_Object(pos, vel), mass(mass) 
-    {
-        shader = make_shader("shaders/circle.vert", "shaders/circle.frag");
-        colorLoc = glGetUniformLocation(shader, "objectColor");
-        projLoc = glGetUniformLocation(shader, "projection");
-    }
-
-    void drawObject(GLuint vao, GLuint vbo) {
-        glUseProgram(shader);
-        glUniform3f(colorLoc, 1.0f, 0.0f, 0.0f);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo); 
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(glm::vec4), &state.pos);
-        glDrawArrays(GL_POINTS, 0, 1);
-    }
-    
-    void deleteProgram() { glDeleteProgram(shader); }
-};
-
-class Ray : public Gravitational_Object{
     public:
-    unsigned int shader;
-    int colorLoc, timeLoc;
+    float mass;
+    float radius;
 
-    Ray(glm::vec4 pos, glm::vec4 vel, bool initialize_shader = true) : Gravitational_Object(pos, vel) {
-        if (initialize_shader == true){
-            shader = make_shader("shaders/line.vert", "shaders/line.frag");
-            colorLoc = glGetUniformLocation(shader, "objectColor"); 
-            timeLoc = glGetUniformLocation(shader, "currentTime");
+    Stellar_Object(float mass, glm::vec4 pos, glm::vec4 vel, float radius = 2, uint sectorCount = 30, uint stackCount = 30) 
+        : Gravitational_Object(pos, vel), 
+          mass(mass), 
+          radius(glm::max(radius, 2 * mass))
+    {
+        make_sphere(sectorCount, stackCount);
+        setup_buffers();
+    }
+
+    void set_Shader(std::shared_ptr<Shader>& shader){
+        this->shader = shader;
+    }
+
+    void set_model_Matrix(std::shared_ptr<glm::mat4> model){
+        modelLoc = glGetUniformLocation(shader->getID(), "model"); 
+        this->model = model;
+    }
+
+    void setup_buffers() {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glGenBuffers(1, &EBO);
+
+        glBindVertexArray(VAO);
+
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, this->sphereVertices.size() * sizeof(float), this->sphereVertices.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->indices.size() * sizeof(uint), this->indices.data(),GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+    }
+
+    void make_sphere(uint sectorCount = 30, uint stackCount = 30){
+        float sectorStep = 2 * M_PI / sectorCount;
+        float stackStep = M_PI / stackCount;
+        float sectorAngle, stackAngle;
+        sphereVertices.clear();
+        indices.clear();
+        
+        for (int i = 0; i <= stackCount; ++i){
+           stackAngle = M_PI / 2 - i * stackStep;
+
+           float xy = radius * cosf(stackAngle);
+
+            for (int j = 0; j <= sectorCount; ++j){
+                sectorAngle = j * sectorStep;
+
+               // Inserting x, y, z
+               this->sphereVertices.insert(this->sphereVertices.end(), { xy * cosf(sectorAngle), xy * sinf(sectorAngle), radius * sinf(stackAngle)});
+            }
+        }
+
+        for (int i = 0; i < stackCount; ++i){
+           int k1 = i * (sectorCount + 1);
+           int k2 = k1 + sectorCount + 1;
+
+            for (int j = 0; j < sectorCount; ++j, ++k1, ++k2){
+                this->indices.push_back(k1);
+                this->indices.push_back(k2);
+                this->indices.push_back(k1 + 1);
+
+                this->indices.push_back(k1 + 1);
+                this->indices.push_back(k2);
+                this->indices.push_back(k2 + 1);
+            }
         }
     }
 
-    void drawTrajectory(const std::vector<glm::vec4>& points, GLuint vao, GLuint vbo) {
-        glUseProgram(shader);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    void drawObject() {
+        shader->use();
+        glBindVertexArray(VAO);
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(*model));
+        glDrawElements(GL_TRIANGLES, this->indices.size(), GL_UNSIGNED_INT, 0);
+    }
 
-        //glm::mat4 projection = glm::ortho(-0.01f, 0.01f, -0.01f, 0.01f, -1.0f, 1.0f);
-        glUniform3f(colorLoc, 0.0f, 1.0f, 1.0f);
-        glUniform1f(timeLoc, (float)glfwGetTime());
+    ~Stellar_Object() {
+        glDeleteBuffers(1, &VBO);
+        glDeleteBuffers(1, &EBO);
+        glDeleteVertexArrays(1, &VAO);
+    }
+};
+
+class Ray : public Gravitational_Object{
+    private:
+    uint VAO, VBO;
+    std::shared_ptr<Shader> shader;
+    std::shared_ptr<glm::mat4> model;
+    uint timeLoc1, timeLoc2, modelLoc;
+
+    public:
+    Ray(glm::vec4 pos, glm::vec4 vel, uint data_size = 200) : Gravitational_Object(pos, vel) {
+        setup_buffers(VAO, VBO, data_size);
+    }
+
+    void set_Shader(std::shared_ptr<Shader>& shader){
+        this->shader = shader;
+    }
+
+    void set_model_Matrix(std::shared_ptr<glm::mat4> model){
+        timeLoc1 = glGetUniformLocation(shader->getID(), "ray_time"); 
+        timeLoc2 = glGetUniformLocation(shader->getID(), "real_time");
+        modelLoc = glGetUniformLocation(shader->getID(), "model"); 
+        this->model = model;
+    }
+
+    void setup_buffers(uint& VAO, uint& VBO, uint& data_size) {
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, data_size * sizeof(glm::vec4), NULL, GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+        glEnableVertexAttribArray(0);
+    }
+
+    void drawTrajectory(const std::vector<glm::vec4>& points) {
+        shader->use();
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+        glUniform1f(timeLoc1, this->state.pos[0]);
+        glUniform1f(timeLoc2, (float)glfwGetTime());
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(*model));
+
 
         glBufferSubData(GL_ARRAY_BUFFER, 0, points.size() * sizeof(glm::vec4), points.data());
         glDrawArrays(GL_LINE_STRIP, 0, (GLsizei)points.size());
     }
     
-    void deleteProgram(){
-        glDeleteProgram(shader);
+    ~Ray() {
+        glDeleteBuffers(1, &VBO);
+        glDeleteVertexArrays(1, &VAO);
     }
 };
 
 struct RayStruct{
-    Ray *ray;
-    unsigned int VAO, VBO;
+    Ray ray;
     std::vector<glm::vec4> history;
     State current_state;
-};
+    bool is_inside_horizon = false;
 
+    RayStruct(State &state, std::shared_ptr<Shader> &shader, std::shared_ptr<glm::mat4> model) 
+        : ray(state.pos, state.vel), 
+          current_state(state) 
+    {
+        ray.set_Shader(shader);
+        ray.set_model_Matrix(model);
+        history.push_back(state.pos);
+        // history.push_back(state.down_scale(10));
+    }
+};
 
 int main(void)
 {   
@@ -238,7 +434,7 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 
-    window = glfwCreateWindow(640, 480, "Simulation Window", NULL, NULL);
+    window = glfwCreateWindow(600, 600, "Simulation Window", NULL, NULL);
     if (!window)
     {
         glfwTerminate();
@@ -254,157 +450,73 @@ int main(void)
         return -1;
     }
     std::cout << glGetString(GL_VERSION) << std::endl;
-    
-    // Making central object 
+
+
+    // Transformation matrices
+    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-100.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -30.0f));
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 600.0f / 600.0f, 0.1f, 100.0f);
+    auto model = std::make_shared<glm::mat4>(projection * view * rotation);
+
+    // Making Spherical Central Object 
     glEnable(GL_PROGRAM_POINT_SIZE);
 
+    uint sectorCount = 30;
+    uint stackCount = 30;
+
     Stellar_Object obj1 = Stellar_Object(1, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f}, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f});
-        
-    unsigned int VAO_circle;
-    unsigned int VBO_circle;
+    float radius = obj1.radius;
+    auto circle_shader = std::make_shared<Shader>("shaders/circle.vert", "shaders/circle.frag");
+    obj1.set_Shader(circle_shader);
+    obj1.set_model_Matrix(model);
 
-    std::vector<glm::vec4> circle_data;
-    circle_data.push_back({0.0f, 0.0f, 0.0f, 0.0f});
 
-    send_geometry(circle_data, VAO_circle, VBO_circle);
+    // Making Ray Bundle
+    int number_of_rays = 10;
+    std::vector<std::unique_ptr<RayStruct>> rayBundle;
+    rayBundle.reserve(number_of_rays);
+    auto ray_shader = std::make_shared<Shader>("shaders/line.vert", "shaders/line.frag");
 
-    // Making ray bundle
-    int ray_number = 20;
-    std::vector<RayStruct> rayBundle;
-    rayBundle.reserve(ray_number);
-
-    for (int i = 0; i < ray_number; ++i){
-        State initial_state(glm::vec4{0.0f, -20.0f, -10.0f + (i * 1), 0.0f}, 
-                      glm::vec4{1.0f, 1, 0.0f, 0.0f});
-
-        RayStruct ri;
-        ri.ray = new Ray(initial_state.pos, initial_state.vel);
-        ri.current_state = initial_state;
-        
-        ri.history.push_back(initial_state.down_scale(20));
-
-        send_geometry_with_size(ri.history, ri.VAO, ri.VBO);
-    
-        rayBundle.push_back(ri);
+    for (int i = 0; i < number_of_rays; ++i){
+        for(int j = 0; j < number_of_rays; ++j){
+            State initial_state(glm::vec4{0.0f, -10.0f, i-4, j-4}, glm::vec4{1.0f, 1, 0.0f, 0.0f});
+            rayBundle.push_back(std::make_unique<RayStruct>(initial_state, ray_shader, model));
+        }
     }
-
+    
+    glEnable(GL_DEPTH_TEST);
     spacetime space;
     while (!glfwWindowShouldClose(window))
     {
         // Exportation of graphics to GPU
-        
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        obj1.drawObject(VAO_circle, VBO_circle);
-
+        obj1.drawObject();
         for (auto& ri : rayBundle) {
-            ri.ray->update(space, ri.current_state);
-            ri.current_state = ri.ray->state;
+            ri->ray.update(space, ri->current_state);
+            ri->current_state = ri->ray.state;
 
-            ri.history.push_back(ri.current_state.down_scale(20));
-            if (ri.history.size() > 200){
-                ri.history.erase(ri.history.begin());
+            if (!(ri->is_inside_horizon)){
+                ri->history.push_back(ri->current_state.pos);
+            }
+            else if (ri->current_state.pos[1] * ri->current_state.pos[1] + ri->current_state.pos[2] * ri->current_state.pos[2] + ri->current_state.pos[3] * ri->current_state.pos[3] <= radius * radius){
+                ri->is_inside_horizon = true;
+            }
+            
+            if (ri->history.size() > 200){
+                ri->history.erase(ri->history.begin());
             } 
             
-            if (ri.history.size() >= 2) {
-                ri.ray->drawTrajectory(ri.history, ri.VAO, ri.VBO);
+            if (ri->history.size() >= 2) {
+                ri->ray.drawTrajectory(ri->history);
+                continue;
             }
         }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-    
-    obj1.deleteProgram();
-    for (auto ri : rayBundle){
-        ri.ray->deleteProgram();
-        delete ri.ray;
-    }
 
     glfwTerminate();
     return 0;
-}
-
-unsigned int make_module(const std::string& filepath, unsigned int module_type){
-
-    std::ifstream file(filepath);
-    std::stringstream bufferedLines;
-    std::string line;
-
-    while(std::getline(file, line)){
-        bufferedLines << line << "\n";
-    }
-
-    std::string sourceCode = bufferedLines.str();
-    const char* shaderSource = sourceCode.c_str();
-    bufferedLines.str("");
-    file.close();
-    
-    unsigned int shaderModule = glCreateShader(module_type);
-    glShaderSource(shaderModule, 1, &shaderSource, NULL);
-    glCompileShader(shaderModule);
-
-    int success;
-    glGetShaderiv(shaderModule, GL_COMPILE_STATUS, &success);
-    if (!success){
-        char errorLog[1024];
-        glGetShaderInfoLog(shaderModule, 1024, NULL, errorLog);
-        std::cout << "Shader Module compilation error:\n" << errorLog << std::endl;
-    }
-
-    return shaderModule;
-}
-
-unsigned int make_shader(const std::string& vertex_filepath, const std::string fragment_filepath){
-
-    std::vector<unsigned int> modules;
-    modules.push_back(make_module(vertex_filepath, GL_VERTEX_SHADER));
-    modules.push_back(make_module(fragment_filepath, GL_FRAGMENT_SHADER));
-
-    unsigned int shaderProgram = glCreateProgram();
-    for (unsigned int shaderModule : modules){
-        glAttachShader(shaderProgram, shaderModule);
-    }
-    glLinkProgram(shaderProgram);
-
-    int success;
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success){
-        char errorLog[1024];
-        glGetProgramInfoLog(shaderProgram, 1024, NULL, errorLog);
-        std::cout << "Shader Program compilation error:\n" << errorLog << std::endl;
-    }
-
-    for (unsigned int shaderModule : modules){
-        glDeleteShader(shaderModule);
-    }
-
-    return shaderProgram;
-}
-
-void send_geometry(const std::vector<glm::vec4>& vertices, unsigned int& VAO, unsigned int& VBO) {
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec4), vertices.data(), GL_DYNAMIC_DRAW);
-
-    // Position Attribute
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
-    glEnableVertexAttribArray(0);
-}
-
-void send_geometry_with_size(const std::vector<glm::vec4>& vertices, unsigned int& VAO, unsigned int& VBO) {
-    int size = 200;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, size * sizeof(glm::vec4), NULL, GL_DYNAMIC_DRAW);
-
-    // Position Attribute
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
-    glEnableVertexAttribArray(0);
 }

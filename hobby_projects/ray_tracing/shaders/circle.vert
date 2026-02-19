@@ -1,8 +1,8 @@
 #version 330 core
-layout (location = 0) in vec4 aPos;
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 model;
 
 void main(){
-    vec3 position = aPos.yzw;
-    gl_Position = vec4(position, 1.0); 
-    gl_PointSize = 60.0;
+    gl_Position = model * vec4(aPos, 1.0); 
 }
