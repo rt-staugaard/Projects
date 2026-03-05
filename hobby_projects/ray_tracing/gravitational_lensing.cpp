@@ -88,6 +88,84 @@ class Shader{
     }
 };
 
+class Camera{
+    private:
+    const float sensitivity = 0.1f;
+    bool firstMouse = true;
+    float lastX, lastY;
+    float yaw = -90.0;
+    float pitch;
+    float fov = 45;
+    float screenWidth = 600.0f;
+    float screenHight = 600.0f;
+    float nearDistance = 0.1f;
+    float farDistance = 100.0f;
+
+    public:
+    glm::vec3 position;
+    glm::vec3 front;
+    glm::vec3 up;
+    glm::mat4 look_at_matrix;
+    glm::mat4 projection = glm::perspective(glm::radians(fov),screenWidth / screenHight, nearDistance, farDistance);
+
+    Camera(glm::vec3 &position, glm::vec3 &front, glm::vec3 &up){
+        this->position = position;
+        this->front = front;
+        this->up = up;
+        look_at_matrix = glm::lookAt(position, front, up);
+    }
+
+    void mouse_movement(double xpos, double ypos){
+        if (firstMouse) {
+            lastX = xpos;
+            lastY = ypos;
+            firstMouse = false;
+        }
+
+        float xoffset = sensitivity * (xpos - lastX);
+        float yoffset = sensitivity * (lastY - ypos);
+        lastX = xpos;
+        lastY = ypos;
+
+        yaw   += xoffset;
+        pitch += yoffset;
+
+        if(pitch > 89.0f){
+            pitch = 89.0f;
+        }
+        if(pitch < -89.0f){
+            pitch = -89.0f;
+        }
+
+        glm::vec3 view;
+        view.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+        view.y = sin(glm::radians(pitch));
+        view.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+        front = glm::normalize(view);
+        
+        glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
+        glm::vec3 right = glm::normalize(glm::cross(front, worldUp));
+        up = glm::normalize(glm::cross(right, front));
+        look_at_matrix = glm::lookAt(position, position + front, up);
+    }
+
+    void scroll_movement(double xoffset, double yoffset){
+        fov -= (float)yoffset;
+        if (fov < 1.0f){
+            fov = 1.0f;
+        }
+        if (fov > 45.0f){
+            fov = 45.0f; 
+        }
+        projection = glm::perspective(fov, screenWidth / screenHight, nearDistance, farDistance);
+    }
+
+    glm::mat4 transform_Model(glm::mat4 &model){
+        glm::mat4 transformedModel = projection * look_at_matrix * model;
+        return transformedModel;
+    }
+};
+
 struct State{
     glm::vec4 pos;
     glm::vec4 vel;
@@ -161,14 +239,14 @@ struct spacetime{
 class Gravitational_Object{
     public:
     State state;
+    spacetime space;
     float step_size = 0.1;
 
-    Gravitational_Object(glm::vec4 &pos, glm::vec4 &vel){
-        this->state.pos = pos;
-        this->state.vel = vel;  
+    Gravitational_Object(State state){
+        this->state = state;
     }
 
-    glm::mat4 get_partial_derivative(spacetime &space, State state, int sigma){
+    glm::mat4 get_partial_derivative(State state, int sigma){
         float h = 1e-4f;
 
         State state_plus = state;
@@ -180,9 +258,9 @@ class Gravitational_Object{
         return (space.get_metric(state_plus) - space.get_metric(state_minus))/(2*h);
     }
 
-    void get_christoffel_symbol(spacetime &space, State state){
+    void get_christoffel_symbol(State state){
         glm::mat4 dg[4];
-        for(int i = 0; i < 4; ++i) dg[i] = get_partial_derivative(space, state, i);  
+        for(int i = 0; i < 4; ++i) dg[i] = get_partial_derivative(state, i);  
         
         glm::mat4 g = space.get_metric(state);
         glm::mat4 inv_g = glm::inverse(g);
@@ -204,8 +282,8 @@ class Gravitational_Object{
     
     }
 
-    State get_acceleration(spacetime &space, State current){
-        get_christoffel_symbol(space, current);
+    State get_acceleration(State current){
+        get_christoffel_symbol(current);
         State change;
         change.pos = current.vel;
         change.vel = glm::vec4(0.0f);
@@ -239,11 +317,11 @@ class Gravitational_Object{
         return change;
     }
 
-    void update(spacetime &space, State state, float h = 0.01){
-        State k1 = get_acceleration(space, state);
-        State k2 = get_acceleration(space, state + k1 * (h/2));
-        State k3 = get_acceleration(space, state + k2 * (h/2));
-        State k4 = get_acceleration(space, state + k3 * h);
+    void update(State state, float h = 0.01){
+        State k1 = get_acceleration(state);
+        State k2 = get_acceleration(state + k1 * (h/2));
+        State k3 = get_acceleration(state + k2 * (h/2));
+        State k4 = get_acceleration(state + k3 * h);
 
         State new_state = state + (k1 + k2 * 2 + k3 * 2 + k4) * (h/6);
         this->state = new_state;
@@ -255,7 +333,7 @@ public:
     private:
     uint VAO, VBO, EBO;
     std::shared_ptr<Shader> shader;
-    std::shared_ptr<glm::mat4> model;
+    glm::mat4 model;
     std::vector<float> sphereVertices;
     std::vector<uint> indices;
     uint modelLoc;
@@ -264,8 +342,8 @@ public:
     float mass;
     float radius;
 
-    Stellar_Object(float mass, glm::vec4 pos, glm::vec4 vel, float radius = 2, uint sectorCount = 30, uint stackCount = 30) 
-        : Gravitational_Object(pos, vel), 
+    Stellar_Object(float mass, State state, float radius = 2, uint sectorCount = 30, uint stackCount = 30) 
+        : Gravitational_Object(state), 
           mass(mass), 
           radius(glm::max(radius, 2 * mass))
     {
@@ -275,11 +353,7 @@ public:
 
     void set_Shader(std::shared_ptr<Shader>& shader){
         this->shader = shader;
-    }
-
-    void set_model_Matrix(std::shared_ptr<glm::mat4> model){
         modelLoc = glGetUniformLocation(shader->getID(), "model"); 
-        this->model = model;
     }
 
     void setup_buffers() {
@@ -335,10 +409,11 @@ public:
         }
     }
 
-    void drawObject() {
+    void drawObject(glm::mat4 &model) {
+        this->model = model;
         shader->use();
         glBindVertexArray(VAO);
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(*model));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
         glDrawElements(GL_TRIANGLES, this->indices.size(), GL_UNSIGNED_INT, 0);
     }
 
@@ -353,23 +428,19 @@ class Ray : public Gravitational_Object{
     private:
     uint VAO, VBO;
     std::shared_ptr<Shader> shader;
-    std::shared_ptr<glm::mat4> model;
+    glm::mat4 model;
     uint timeLoc1, timeLoc2, modelLoc;
 
     public:
-    Ray(glm::vec4 pos, glm::vec4 vel, uint data_size = 200) : Gravitational_Object(pos, vel) {
+    Ray(State state, uint data_size = 200) : Gravitational_Object(state) {
         setup_buffers(VAO, VBO, data_size);
     }
 
     void set_Shader(std::shared_ptr<Shader>& shader){
         this->shader = shader;
-    }
-
-    void set_model_Matrix(std::shared_ptr<glm::mat4> model){
         timeLoc1 = glGetUniformLocation(shader->getID(), "ray_time"); 
         timeLoc2 = glGetUniformLocation(shader->getID(), "real_time");
         modelLoc = glGetUniformLocation(shader->getID(), "model"); 
-        this->model = model;
     }
 
     void setup_buffers(uint& VAO, uint& VBO, uint& data_size) {
@@ -384,14 +455,15 @@ class Ray : public Gravitational_Object{
         glEnableVertexAttribArray(0);
     }
 
-    void drawTrajectory(const std::vector<glm::vec4>& points) {
+    void drawTrajectory(const std::vector<glm::vec4>& points, glm::mat4 &model) {
+        this->model = model;
         shader->use();
         glBindVertexArray(VAO);
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
 
         glUniform1f(timeLoc1, this->state.pos[0]);
         glUniform1f(timeLoc2, (float)glfwGetTime());
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(*model));
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
 
         glBufferSubData(GL_ARRAY_BUFFER, 0, points.size() * sizeof(glm::vec4), points.data());
@@ -410,16 +482,52 @@ struct RayStruct{
     State current_state;
     bool is_inside_horizon = false;
 
-    RayStruct(State &state, std::shared_ptr<Shader> &shader, std::shared_ptr<glm::mat4> model) 
-        : ray(state.pos, state.vel), 
+    RayStruct(State &state, std::shared_ptr<Shader> &shader) 
+        : ray(state), 
           current_state(state) 
     {
         ray.set_Shader(shader);
-        ray.set_model_Matrix(model);
         history.push_back(state.pos);
-        // history.push_back(state.down_scale(10));
     }
 };
+
+void processInput(GLFWwindow *window, Camera &camera, float deltaTime){
+    
+    const float cameraSpeed = 2.5 * deltaTime;
+    if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
+        camera.position += cameraSpeed * camera.front;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS){
+        camera.position -= cameraSpeed * camera.front;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS){
+        camera.position -= cameraSpeed * glm::normalize(glm::cross(camera.front, camera.up));
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS){
+        camera.position += cameraSpeed * glm::normalize(glm::cross(camera.front, camera.up));
+    }
+    camera.look_at_matrix = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
+}
+
+void mouse_callback_bridge(GLFWwindow* window, double xpos, double ypos) {
+    Camera* camera = static_cast<Camera*>(glfwGetWindowUserPointer(window));
+    
+    if (camera) {
+        camera->mouse_movement(xpos, ypos);
+    }
+}
+
+void scroll_callback_bridge(GLFWwindow* window, double xoffset, double yoffset) {
+    Camera* camera = static_cast<Camera*>(glfwGetWindowUserPointer(window));
+    
+    if (camera) {
+        camera->scroll_movement(xoffset, yoffset);
+    }
+}
+
 
 int main(void)
 {   
@@ -451,12 +559,16 @@ int main(void)
     }
     std::cout << glGetString(GL_VERSION) << std::endl;
 
-
-    // Transformation matrices
-    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(-100.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -30.0f));
+    // Setting up camera
+    glm::vec3 cameraPostion{0,0,0};
+    glm::vec3 cameraFront{0,0,-4};
+    glm::vec3 cameraUp{0,1,0};
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), 600.0f / 600.0f, 0.1f, 100.0f);
-    auto model = std::make_shared<glm::mat4>(projection * view * rotation);
+    Camera camera(cameraPostion, cameraFront, cameraUp);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  
+    glfwSetWindowUserPointer(window, &camera);
+    glfwSetCursorPosCallback(window, mouse_callback_bridge);
+    glfwSetScrollCallback(window, scroll_callback_bridge); 
 
     // Making Spherical Central Object 
     glEnable(GL_PROGRAM_POINT_SIZE);
@@ -464,12 +576,11 @@ int main(void)
     uint sectorCount = 30;
     uint stackCount = 30;
 
-    Stellar_Object obj1 = Stellar_Object(1, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f}, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f});
+    State object_state = State(glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f}, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f});
+    Stellar_Object obj1 = Stellar_Object(1, object_state);
     float radius = obj1.radius;
     auto circle_shader = std::make_shared<Shader>("shaders/circle.vert", "shaders/circle.frag");
     obj1.set_Shader(circle_shader);
-    obj1.set_model_Matrix(model);
-
 
     // Making Ray Bundle
     int number_of_rays = 10;
@@ -480,20 +591,29 @@ int main(void)
     for (int i = 0; i < number_of_rays; ++i){
         for(int j = 0; j < number_of_rays; ++j){
             State initial_state(glm::vec4{0.0f, -10.0f, i-4, j-4}, glm::vec4{1.0f, 1, 0.0f, 0.0f});
-            rayBundle.push_back(std::make_unique<RayStruct>(initial_state, ray_shader, model));
+            rayBundle.push_back(std::make_unique<RayStruct>(initial_state, ray_shader));
         }
     }
-    
+
     glEnable(GL_DEPTH_TEST);
-    spacetime space;
+    float lastFrame = 0;
+    glm::mat4 model;
+    glm::mat4 object_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -30.0f));
     while (!glfwWindowShouldClose(window))
     {
         // Exportation of graphics to GPU
+        float currentFrame = glfwGetTime();
+        float deltaTime = currentFrame - lastFrame;
+        processInput(window, camera, deltaTime);
+        lastFrame = currentFrame;  
+
+        glm::mat4 model = camera.transform_Model(object_matrix);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        obj1.drawObject();
+        obj1.drawObject(model);
         for (auto& ri : rayBundle) {
-            ri->ray.update(space, ri->current_state);
+            ri->ray.update(ri->current_state);
             ri->current_state = ri->ray.state;
 
             if (!(ri->is_inside_horizon)){
@@ -508,7 +628,7 @@ int main(void)
             } 
             
             if (ri->history.size() >= 2) {
-                ri->ray.drawTrajectory(ri->history);
+                ri->ray.drawTrajectory(ri->history, model);
                 continue;
             }
         }
