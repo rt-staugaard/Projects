@@ -1,7 +1,7 @@
 #include "modules/camera.hpp"
 #include "modules/shader.hpp"
 #include "modules/rays and stars.hpp"
-#include "modules/renderer.hpp"
+#include "modules/processInput.hpp"
 #include <GLFW/glfw3.h>
 #include <glm.hpp>
 #include <glad/glad.h>
@@ -125,7 +125,7 @@ GLFWwindow* window;
     glfwSetCursorPosCallback(window, mouse_callback_bridge);
     glfwSetScrollCallback(window, scroll_callback_bridge); 
 
-    glm::vec3 sourcePosition{-10.0f, -15.0f, -60.0f};
+    glm::vec3 sourcePosition{-10.0f, -25.0f, -100.0f};
     float sourceRadius = 10.0;
     glUniform1f(glGetUniformLocation(shaderID, "sourceRadius"), sourceRadius);
 
@@ -143,8 +143,8 @@ GLFWwindow* window;
     setup_buffers(VAO, VBO);
 
     glm::mat4 identity(1.0f);
-    GLint cameraLoc =glGetUniformLocation(shaderID, "u_cameraPos");
-    GLint sourceLoc =glGetUniformLocation(shaderID, "u_sourcePos");
+    GLint cameraLoc = glGetUniformLocation(shaderID, "u_cameraPos");
+    GLint sourceLoc = glGetUniformLocation(shaderID, "u_sourcePos");
 
     double lastTime = glfwGetTime();
     int nbFrames = 0;

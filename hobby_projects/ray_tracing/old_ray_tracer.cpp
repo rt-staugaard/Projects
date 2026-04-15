@@ -2,7 +2,7 @@
 #include "modules/rays and stars.hpp"
 #include "modules/shader.hpp"
 #include "modules/camera.hpp"
-#include "modules/renderer.hpp"
+#include "modules/processInput.hpp"
 
 int main(int argc, char* argv[])
 {   

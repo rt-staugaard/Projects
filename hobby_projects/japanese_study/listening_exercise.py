@@ -1,7 +1,18 @@
 import sqlite3
 import os
 import random
+from datetime import datetime, timedelta
 
+def update_review(current_ease, current_interval, quality):
+    new_ease = current_ease + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+    if new_ease < 1.3: new_ease = 1.3 
+
+    if quality < 3: 
+        new_interval = 1
+    else:
+        new_interval = round(current_interval * new_ease)
+        
+    return new_ease, new_interval
 
 def study_session():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,12 +23,11 @@ def study_session():
 
     print("--- Welcome to Oral Recognition! ---")
     print("1. New Cards (Unseen)")
-    print("2. Review (Learning)")
-    print("3. Known Cards")
+    print("2. Daily Review")
 
 
     mode = input("Chose a mode: ")
-    allowed = {"1", "2", "3"} 
+    allowed = {"1", "2"} 
     while (mode not in allowed):
         mode = input("Chose a mode: ")
 
@@ -27,24 +37,30 @@ def study_session():
         deck_size = 10
 
     if mode == "1":
-        cursor.execute(f"SELECT rowid, * FROM sentences WHERE status = 0")
+        cursor.execute(f'''SELECT s.rowid, s.japanese_text, s.english_text, s.audio_1, 
+                       s.audio_2, r.ease_factor, r.interval
+                       FROM sentence_review r
+                       JOIN sentences s ON r.rowid = s.rowid
+                       WHERE status = 0''')
     elif mode == "2":
-        cursor.execute(f"SELECT rowid, * FROM sentences WHERE status = 1")
-    elif mode == "3":
-        cursor.execute(f"SELECT rowid, * FROM sentences WHERE status = 2")
+        cursor.execute(f'''SELECT s.rowid, s.japanese_text, s.english_text, s.audio_1, 
+                       s.audio_2, r.ease_factor, r.interval
+                       FROM sentence_review r
+                       JOIN sentences s ON r.rowid = s.rowid
+                       WHERE r.due_date <= datetime('now')
+                       AND status = 1
+                       ORDER BY r.due_date ASC''')
 
     deck = cursor.fetchall()
 
     if not deck:
         print("No cards found in this category!")
         return
-    
-    random.shuffle(deck)
 
     AUDIO_PATH = os.path.join(BASE_DIR, "assets", "soundfiles")
     
     for card in deck[:int(deck_size)]:
-        row_id, japanese, english, audio1, audio2, _ , _ = card
+        row_id, japanese, english, audio1, audio2, ease_factor, interval = card
         selected_audio = random.choice([a for a in [audio1, audio2] if a])
 
         show_answer = False
@@ -84,16 +100,26 @@ def study_session():
                     show_answer = True
                 else:
                     break
+                
+        difficulty = ''
+        allowed = {"1", "2", "3", "4", "5"} 
+        while (difficulty not in allowed):
+            difficulty = input("Select difficulty: [1, 2, 3, 4, 5] (1 = Not understood, 3 = inteligble, 5 = Completely)\n")
+        
+        new_ease, new_interval = update_review(ease_factor, interval, int(difficulty))
+        new_date_obj = datetime.now() + timedelta(days = new_interval)
+        formatted_date = new_date_obj.strftime('%Y-%m-%d %H:%M:%S')
 
-        if (mode == "1"):
+        if mode == "1":
             cursor.execute("UPDATE sentences SET status = 1 WHERE rowid = ?", (row_id,))
-        if (mode == "2"): 
-            was_card_difficult = input("\nDid you have any difficulty with the card? (y/n): ")
-            if (was_card_difficult.lower() == "n"):
-                cursor.execute("UPDATE sentences SET status = 2 WHERE rowid = ?", (row_id,))
+        
+        cursor.execute('''
+            UPDATE sentence_review 
+            SET ease_factor = ?, interval = ?, due_date = ?
+            WHERE rowid = ?
+        ''', (new_ease, new_interval, formatted_date, row_id))
 
         conn.commit()
-
     conn.close()
     print("Good study session! じゃあね！")
 

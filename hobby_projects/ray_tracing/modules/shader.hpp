@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <glad/glad.h>
 
+
 class Shader{
     private:
     uint shaderProgram;
@@ -13,8 +14,8 @@ class Shader{
     public:
     Shader() : shaderProgram(0) {}
 
-    Shader(const std::string& vertex_filepath, const std::string fragment_filepath){
-        make_shader_program(vertex_filepath, fragment_filepath);
+    Shader(const std::string& vertex_filepath, const std::string fragment_filepath, bool isPhysicsShader = false){
+        make_shader_program(vertex_filepath, fragment_filepath, isPhysicsShader);
     }
 
     uint make_shader_module(const std::string& filepath, unsigned int module_type){
@@ -46,7 +47,7 @@ class Shader{
         return shaderModule;
     }   
 
-    void make_shader_program(const std::string& vertex_filepath, const std::string fragment_filepath){
+    virtual void make_shader_program(const std::string& vertex_filepath, const std::string fragment_filepath, bool isPhysicsShader){
         std::vector<unsigned int> modules;
         modules.push_back(make_shader_module(vertex_filepath, GL_VERTEX_SHADER));
         modules.push_back(make_shader_module(fragment_filepath, GL_FRAGMENT_SHADER));
@@ -55,7 +56,13 @@ class Shader{
         for (unsigned int shaderModule : modules){
             glAttachShader(shaderProgram, shaderModule);
         }
-        
+
+        if (isPhysicsShader) {
+            glBindFragDataLocation(shaderProgram, 0, "nextPos");
+            glBindFragDataLocation(shaderProgram, 1, "nextVel");
+        } else {
+            glBindFragDataLocation(shaderProgram, 0, "fragColor");
+        }
         glLinkProgram(shaderProgram);
 
         int success;
@@ -76,9 +83,14 @@ class Shader{
         glUseProgram(shaderProgram);
     }
 
+    void set_shader_program(unsigned int program){
+        this->shaderProgram = program;
+    }
+
     uint getID() const { return shaderProgram; }
 
     ~Shader() {
         glDeleteProgram(shaderProgram);
     }
 };
+

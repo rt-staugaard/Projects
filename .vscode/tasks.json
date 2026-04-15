@@ -16,6 +16,7 @@
                 "${workspaceFolder}/dependencies/glad/src/glad.c",
                 "-I${workspaceFolder}/dependencies/glad/include",
                 "-I${workspaceFolder}/dependencies/glm",
+                "-I${workspaceFolder}/dependencies/shader",
                 "-I/opt/homebrew/include",
                 "-L/opt/homebrew/lib",
                 "-lglfw",

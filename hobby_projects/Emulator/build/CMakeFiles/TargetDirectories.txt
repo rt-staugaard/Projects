@@ -1,0 +1,4 @@
+/Users/rasat1/Documents/Code/hobby_projects/Emulator/build/CMakeFiles/GLAD.dir
+/Users/rasat1/Documents/Code/hobby_projects/Emulator/build/CMakeFiles/Chip-8.dir
+/Users/rasat1/Documents/Code/hobby_projects/Emulator/build/CMakeFiles/edit_cache.dir
+/Users/rasat1/Documents/Code/hobby_projects/Emulator/build/CMakeFiles/rebuild_cache.dir

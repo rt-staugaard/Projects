@@ -2,7 +2,7 @@ import sqlite3
 import re
 from datetime import date
 
-conn = sqlite3.connect('japanese_study.db')
+conn = sqlite3.connect('../database/japanese_study.db')
 read_cursor = conn.cursor()
 write_cursor = conn.cursor()
     
@@ -10,34 +10,36 @@ write_cursor = conn.cursor()
 write_cursor.execute("DROP TABLE IF EXISTS sentence_review")
 
 write_cursor.execute('''
-            CREATE TABLE IF NOT EXISTS sentence_review(
-                japanese_key TEXT PRIMARY KEY,
-                times_seen INTEGER NOT NULL,
-                interval INTEGER NOT NULL,
-                ease_factor REAL NOT NULL,
-                due_date TEXT
-            )
-        ''')
+    CREATE TABLE IF NOT EXISTS sentence_review(
+        rowid INT PRIMARY KEY,
+        interval INTEGER NOT NULL,
+        ease_factor REAL NOT NULL,
+        due_date TEXT NOT NULL,
+        FOREIGN KEY (rowid) REFERENCES sentences(rowid)
+    )
+''')
 
-read_cursor.execute("SELECT japanese_text, status from sentences")
+write_cursor.execute("CREATE INDEX IF NOT EXISTS idx_sentence_due_date ON sentence_review(due_date)")
+
+read_cursor.execute("SELECT rowid, status from sentences")
 
 today = date.today().isoformat()
 
-for japanese_text, status in read_cursor:
+for rowid, status in read_cursor:
 
         if status == 0:
-            values = (japanese_text, 0, 0, 2.5, today)
+            values = (rowid, 0, 2.5, today)
 
         elif status == 1:
-            values = (japanese_text, 2, 1, 2.3, today)
+            values = (rowid, 1, 2.3, today)
 
         else: 
-            values = (japanese_text, 6, 5, 2.5, today)
+            values = (rowid, 5, 2.5, today)
 
         write_cursor.execute("""
             INSERT OR REPLACE INTO sentence_review
-            (japanese_key, times_seen, interval, ease_factor, due_date)
-            VALUES (?, ?, ?, ?, ?)
+            (rowid, interval, ease_factor, due_date)
+            VALUES (?, ?, ?, ?)
         """, values)
 
 conn.commit()

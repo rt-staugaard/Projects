@@ -20,6 +20,17 @@ void processInput(GLFWwindow *window, Camera &camera, float deltaTime){
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS){
         camera.position += cameraSpeed * glm::normalize(glm::cross(camera.front, camera.up));
     }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){
+        camera.position += cameraSpeed * camera.up;
+    }
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS){
+        camera.position -= cameraSpeed * camera.up;
+    }
+
+    float distance = glm::length(camera.position);
+    if (distance > 40.0f) {
+        camera.position = glm::normalize(camera.position) * 40.0f;
+    }
     camera.look_at_matrix = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
 }
 
@@ -38,5 +49,7 @@ void scroll_callback_bridge(GLFWwindow* window, double xoffset, double yoffset) 
         camera->scroll_movement(xoffset, yoffset);
     }
 }
+
+
 
 

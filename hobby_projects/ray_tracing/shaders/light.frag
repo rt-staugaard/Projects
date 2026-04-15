@@ -63,9 +63,9 @@ State get_acceleration(vec4 pos, vec4 vel) {
     return change;
 }
 
-State update(State s, float h){
+void update(inout State s, float h){
     State k = get_acceleration(s.pos, s.vel);
-    State total = k; // Start the sum with k1
+    State total = k;
 
     k = get_acceleration(s.pos + k.pos * (h * 0.5), s.vel + k.vel * (h * 0.5));
     total.pos += 2.0 * k.pos;
@@ -73,8 +73,6 @@ State update(State s, float h){
 
     s.pos += total.pos * h;
     s.vel += total.vel * h;
-    
-    return s;
 }
 
 
@@ -90,7 +88,7 @@ void main() {
     vec4 startVel = vec4(1, dir);
     State ray = State(startPos, startVel);
 
-    float theta2 =  clamp(u_sourcePos.y,0.001, 3.141);
+    float theta2 = clamp(u_sourcePos.y,0.001, 3.141);
     float phi2 = clamp(u_sourcePos.z, 0.001, 2 * 3.141);
 
     ray = Spherical(ray.pos, ray.vel);
@@ -110,14 +108,14 @@ void main() {
 
     vec3 pixelColor = vec3(1.0, 0.0, 0.0);
 
-    for(int i = 0; i < 2048; i++) {
-        float h_radial = min(0.15, (ray.pos.y - 2.0 * mass_BH) * 0.15);
+    for(int i = 0; i < 1024; i++) {
+        float h_radial = min(0.3, (ray.pos.y - 2.0 * mass_BH) * 0.3);
         float max_angular_vel = max(abs(ray.vel.z), abs(ray.vel.w)) + 1e-4;
-        float h_angular = 0.003 / max_angular_vel;
+        float h_angular = 0.0065 / max_angular_vel;
         float h = min(h_radial, h_angular);
         h = clamp(h, 0.0001, 0.15);
 
-        ray = update(ray, h);
+        update(ray, h);
     
         float r = ray.pos.y;
 
