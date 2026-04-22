@@ -1,56 +1,50 @@
-#include "modules/physics.cpp"
-#include "modules/rays and stars.hpp"
-#include "modules/shader.hpp"
-#include "modules/camera.hpp"
-#include "modules/processInput.hpp"
+#include "../../modules/camera/camera.hpp"
+#include "../../modules/graphics/GLFW_setup.hpp"
+#include "../../modules/graphics/DisplayDrawer.hpp"
+#include "../../modules/physics/math_functions.hpp"
+#include "../../modules/physics/physics.hpp"
+#include "../../modules/physics/rays_and_stars.hpp"
 
-int main(int argc, char* argv[])
-{   
+float screenHeight = 600;
+float screenWidth = 600;
+float screenFar = 100;
+float screenNear = 0.1;
+
+const char vertDir[] = "../../shaders/ray.vert";
+const char fragDir[] = "../../shaders/ray.frag";
+
+// CAMERA
+glm::vec3 initPosition{0,0,30};
+glm::vec3 initFront{0,0,-1};
+glm::vec3 initUp{0,1,0};
+
+// BLACK HOLE
+glm::vec4 BH_pos{0.0f, 0.0f, 0.0f, 0.0f};
+glm::vec4 BH_vec{0.0f, 0.0f, 0.0f, 0.0f};
+
+// STAR
+glm::vec4 Star_pos{0.0f, -5.0f, 10.0f, -50.0f};
+glm::vec4 Star_vel{0.0f, 0.0f, 0.0f, 0.0f};
+
+int main(int argc, char* argv[]){
+
+    std::unique_ptr<Window> window = std::make_unique<Window>(screenWidth, screenHeight, "Simulation Window");
+    std::unique_ptr<DisplayDrawer> drawer = std::make_unique<DisplayDrawer>(argv, vertDir, fragDir);
     std::filesystem::path exe_path = std::filesystem::absolute(argv[0]).parent_path();
-    GLFWwindow* window;
 
-    if (!glfwInit()){
-        return -1;
-    }
-        
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    float screenHeight = 600;
-    float screenWidth = 600;
-    float screenFar = 100;
-    float screenNear = 0.1;
-
-    window = glfwCreateWindow(screenWidth, screenHeight, "Simulation Window", NULL, NULL);
-    if (!window){
-        glfwTerminate();
-        return -1;
-    }
-
-    glfwMakeContextCurrent(window);
-
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)){
-        std::cout << "Failed to initialize GLAD" << std::endl;
-        return -1;
-    }
 
     // Setting up camera
-    glm::vec3 cameraPosition{0,0,30};
-    glm::vec3 cameraFront{0,0,-1};
-    glm::vec3 cameraUp{0,1,0};
-    Camera camera(cameraPosition, cameraFront, cameraUp);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  
-    glfwSetWindowUserPointer(window, &camera);
-    glfwSetCursorPosCallback(window, mouse_callback_bridge);
-    glfwSetScrollCallback(window, scroll_callback_bridge); 
+
+    Camera camera(initPosition, initFront, initUp);
+    window->bindCamera(camera);
 
     // Making Spherical Central Object 
-    State blackhole_state = State(glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f}, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f});
+    State blackhole_state = State(BH_pos, BH_vec);
     std::shared_ptr<Schwarzchild> blackhole = std::make_shared<Schwarzchild>(1, blackhole_state);
+
     float blackhole_radius = blackhole->radius;
-    std::filesystem::path circleVertDir = exe_path / "shaders" / "circle.vert";
-    std::filesystem::path circleFragDir = exe_path / "shaders" / "circle.frag";
+    std::filesystem::path circleVertDir = exe_path / ".." / ".." / "shaders" / "circle.vert";
+    std::filesystem::path circleFragDir = exe_path / ".." / ".." / "shaders" / "circle.frag";
     auto circle_shader = std::make_shared<Shader>(circleVertDir.string(), circleFragDir.string());
     blackhole->set_Shader(circle_shader);
 
@@ -59,7 +53,7 @@ int main(int argc, char* argv[])
     uint stackCount = 30;
     float mass = 0.01;
     float star_radius = 2;
-    State star_state = State(glm::vec4 {0.0f, -5.0f, 10.0f, -50.0f}, glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f});
+    State star_state = State(Star_pos, Star_vel);
     Star star = Star(star_state, mass, star_radius);
     star.set_Shader(circle_shader);
 
@@ -68,8 +62,8 @@ int main(int argc, char* argv[])
     std::vector<std::unique_ptr<Ray>> rayBundle;
     rayBundle.reserve(number_of_rays);
 
-    std::filesystem::path rayVertDir = exe_path / "shaders" / "line.vert";
-    std::filesystem::path rayFragDir = exe_path / "shaders" / "line.frag";
+    std::filesystem::path rayVertDir = exe_path / ".." / ".." / "shaders" / "line.vert";
+    std::filesystem::path rayFragDir = exe_path / ".." / ".." / "shaders" / "line.frag";
     auto ray_shader = std::make_shared<Shader>(rayVertDir.string(), rayFragDir.string());
 
     for (int i = 0; i < number_of_rays; ++i){
@@ -86,11 +80,11 @@ int main(int argc, char* argv[])
     glm::mat4 blackhole_position = glm::mat4(1.0f);
     glm::mat4 star_position = glm::translate(glm::mat4(1.0f), glm::vec3{star_state.pos.y, star_state.pos.z, star_state.pos.w});
 
-    while (!glfwWindowShouldClose(window)){
+    while (!glfwWindowShouldClose(window->instance)){
 
         float currentFrame = glfwGetTime();
         float deltaTime = currentFrame - lastFrame;
-        processInput(window, camera, deltaTime);
+        window->ManageInput(camera, deltaTime);
         lastFrame = currentFrame;  
 
         glm::mat4 blackhole_model = camera.transform_Model(blackhole_position);
@@ -106,10 +100,8 @@ int main(int argc, char* argv[])
             ri->propagate_ray(ray_model);
         }
 
-        glfwSwapBuffers(window);
+        glfwSwapBuffers(window->instance);
         glfwPollEvents();
     }
-
-    glfwTerminate();
     return 0;
 }
