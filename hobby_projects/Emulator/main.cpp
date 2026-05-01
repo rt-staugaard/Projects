@@ -14,7 +14,7 @@ int main(int argc, char* argv[]){
     CHIP8 Emulator = CHIP8();
     std::unique_ptr<DisplayDrawer> drawer = std::make_unique<DisplayDrawer>(argv, &Emulator.Display[0]);
 
-    Emulator.LoadProgram("../roms/spaceinvaders.ch8");
+    Emulator.LoadProgram("../roms/superpong.ch8");
 
     const auto targetCycleTime = std::chrono::microseconds(1000000 / 500);
     auto lastTimerUpdate = std::chrono::high_resolution_clock::now();
@@ -25,8 +25,13 @@ int main(int argc, char* argv[]){
         glfwPollEvents();
         AppWindow->processInput(&Emulator.KeyPad[0]);
 
-        uint16_t nextOpcode = Emulator.Fetch();
-        Emulator.Decode(nextOpcode);
+        for (int i = 0; i < 5; i++) { 
+            uint16_t nextOpcode = Emulator.Fetch();
+            Emulator.Decode(nextOpcode);
+        }
+
+        //uint16_t nextOpcode = Emulator.Fetch();
+        //Emulator.Decode(nextOpcode);
 
         if (Emulator.drawFlag){
             glClear(GL_COLOR_BUFFER_BIT);

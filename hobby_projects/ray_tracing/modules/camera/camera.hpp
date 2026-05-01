@@ -34,6 +34,9 @@ class Camera{
         look_at_matrix = glm::lookAt(position, position + front, up);
         this->right = glm::normalize(glm::cross(front, up));
         this->projection = glm::perspective(glm::radians(fov), screenWidth / screenHeight, nearDistance, farDistance);
+
+        this->lastX = screenWidth / 2.0;
+        this->lastY = screenHeight / 2.0;
     }
 
     void mouse_movement(double xpos, double ypos){

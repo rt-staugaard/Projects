@@ -75,6 +75,23 @@ void update(inout State s, float h){
     s.vel += total.vel * h;
 }
 
+float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+float starNoise(vec2 uv) {
+    vec2 i = floor(uv);
+    vec2 f = fract(uv);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
 
 void main() {
     vec2 st = gl_FragCoord.xy / u_resolution.xy;
@@ -109,9 +126,9 @@ void main() {
     vec3 pixelColor = vec3(1.0, 0.0, 0.0);
 
     for(int i = 0; i < 1024; i++) {
-        float h_radial = min(0.3, (ray.pos.y - 2.0 * mass_BH) * 0.3);
+        float h_radial = min(0.35, (ray.pos.y - 2.0 * mass_BH) * 0.3);
         float max_angular_vel = max(abs(ray.vel.z), abs(ray.vel.w)) + 1e-4;
-        float h_angular = 0.0065 / max_angular_vel;
+        float h_angular = 0.0035 / max_angular_vel;
         float h = min(h_radial, h_angular);
         h = clamp(h, 0.0001, 0.15);
 
@@ -133,8 +150,19 @@ void main() {
 
             float cosGamma = cos(theta1)*cos(theta2) + sin(theta1)*sin(theta2)*cos(phi1 - phi2);
             float alpha = atan(sourceRadius / u_sourcePos.x);
-            if (cosGamma > cos(alpha)) {    
-                pixelColor = vec3(1.0); 
+            if (cosGamma > cos(alpha)) {
+                float dist = acos(cosGamma) / alpha; 
+                float centerFactor = 1.0 - smoothstep(0.0, 1.0, dist);
+
+                vec2 starUV = vec2(ray.pos.z * 5.0, ray.pos.w * 10.0);
+                float noise = starNoise(starUV) * 0.5 + 0.5;
+
+                vec3 baseColor = vec3(0.9, 0.8, 0.8); 
+                vec3 hotColor = vec3(1.0, 1.0, 1.0);  
+                vec3 finalStar = mix(baseColor, hotColor, noise);
+
+                float limbDarkening = pow(centerFactor, 0.2);
+                pixelColor = finalStar * limbDarkening * 1.5;    
                 break;
             }
             pixelColor = vec3(0.5); 

@@ -66,5 +66,6 @@
         "set": "cpp",
         "numeric": "cpp",
         "map": "cpp"
-    }
+    },
+    "cmake.ignoreCMakeListsMissing": true
 }

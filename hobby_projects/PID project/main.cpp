@@ -31,7 +31,7 @@ template <int Width, int Height>
 struct Heater{
     int index;
     float temp;
-    float maxTemperature = roomTemperature + 20.0f;
+    float maxTemperature = 40.0f;
 
     Heater(int x, int y, float temp) : temp(temp){
         index = x + y * Width; 
@@ -42,7 +42,7 @@ struct Heater{
             this->temp = roomTemperature;
         }
         else{
-            this->temp = power * maxTemperature;
+            this->temp = roomTemperature + power * maxTemperature;
         }
     }
 };
@@ -55,7 +55,7 @@ void update (Room<Width, Height> &room, Heater<Width, Height> heater, float alph
         for (int y = 0; y <  Height; ++y){
             int idx = y * Width + x;
 
-            float leakage = room.TempGrid[idx] * 0.9925 + roomTemperature * 0.0075;
+            float leakage = room.TempGrid[idx] * 0.995 + roomTemperature * 0.005;
 
             float T_up = (y > 0) ? room.TempGrid[idx - Width] : leakage;
             float T_down = (y < Height - 1) ?  room.TempGrid[idx + Width] : leakage;
@@ -173,7 +173,7 @@ int main(int argc, char* argv[]){
     std::array<float, 5> errorHistory;
     float SP = 22.0;
     float alpha = 0.35;
-    std::array<float, 3> constants = {12, 0.75, 5};
+    std::array<float, 3> constants = {15, 0.75, 5};
     
     int head = 0;
     float PV = room.getTemperature();

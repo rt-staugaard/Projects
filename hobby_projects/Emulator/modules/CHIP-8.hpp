@@ -88,7 +88,7 @@ void LogicalREG(uint8_t* REG, uint16_t remainder){
             break;
 
         case 0x5:
-            *VF = (*Vx > *Vy) ? 1 : 0;
+            *VF = (*Vx >= *Vy) ? 1 : 0;
             *Vx -= *Vy;
             break;
 
@@ -100,6 +100,7 @@ void LogicalREG(uint8_t* REG, uint16_t remainder){
         case 0x7:
             *VF = (*Vy >= *Vx) ? 1 : 0;
             *Vx = *Vy - *Vx;
+            break;
 
         case 0xE:
             *VF = (*Vx >> 7) == 0x01 ? 1 : 0;
@@ -122,8 +123,8 @@ class CHIP8{
     uint16_t INDEX;
     uint16_t program_counter;
 
-    uint8_t delay_timer;
-    uint8_t sound_timer;
+    uint8_t delay_timer = 0;
+    uint8_t sound_timer = 0;
 
     Stack stack;
 
@@ -204,6 +205,13 @@ class CHIP8{
                 else if (remainder == 0x00EE){
                     // RETURN FROM SYSTEM ROUTINE
                     program_counter = stack.pop();
+                }
+                else if ((remainder & 0x0FF0) == 0x00C0) { // 00CN: Scroll Down
+                    uint8_t n = remainder & 0x000F;
+                    for (int i = (64 * 32) - 1; i >= 64 * n; i--) {
+                        Display[i] = Display[i - (64 * n)];
+                    }
+                    memset(Display, 0, 64 * n);
                 }
                 else{
                     // SPECIFIC ROUTINE ONLY USED ON OLDER PCs
@@ -306,11 +314,9 @@ class CHIP8{
 
                             if(Display[display_idx] == 1){
                                 REG[0xF] = 1;
-                                Display[display_idx] = 0;
                             }
-                            else {
-                                Display[display_idx] = 1;
-                            }
+                            Display[display_idx] ^= 1;
+                            
                         }
                     }
                     
@@ -346,7 +352,7 @@ class CHIP8{
                         bool keyPressed = false;
                         for (int i = 0; i < 16; i++) {
                             if (KeyPad[i] != 0) {
-                                REG[(opcode & 0x0F00) >> 8] = i;
+                                REG[(remainder & 0x0F00) >> 8] = i;
                                 keyPressed = true;
                                 break;
                             }
@@ -354,7 +360,6 @@ class CHIP8{
 
                         if (!keyPressed) {
                             program_counter -= 2; 
-                            return;
                         }
                         break;
                     }
@@ -370,6 +375,12 @@ class CHIP8{
                     }
                 
                     case 0x1E:{ // ADD REGx TO INDEX 
+                        if (INDEX + Vx > 0x0FFF){
+                            REG[0xF] = 1;
+                        }
+                        else{
+                            REG[0xF] = 0;
+                        }
                         INDEX += Vx;
                         break;
                     }
@@ -388,7 +399,7 @@ class CHIP8{
 
                     case 0x55:{ // STORE REG0 - REGx IN MEMORY STARTING AT INDEX 
                         uint8_t *reg_ptr = &REG[0]; 
-                        for (int i = 0; i < idx; i++){
+                        for (int i = 0; i <= idx; i++){
                             RAM[INDEX + i] = *(reg_ptr + i);
                         }
                         break;
@@ -396,7 +407,7 @@ class CHIP8{
 
                     case 0x65:{ // READ MEMORY STARTING AT INDEX, INSERT INTO REG0 - REGx
                         uint8_t *reg_ptr = &REG[0]; 
-                        for (int i = 0; i < idx; i++){
+                        for (int i = 0; i <= idx; i++){
                             *(reg_ptr + i) = RAM[INDEX + i];
                         }
                         break;

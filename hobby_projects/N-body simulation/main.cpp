@@ -53,7 +53,6 @@ void propagate_states(int state_nr, System &old_system, System &new_system, floa
     new_system.xs[state_nr] += t * new_system.vx[state_nr];
     new_system.ys[state_nr] += t * new_system.vy[state_nr];
     new_system.zs[state_nr] += t * new_system.vz[state_nr];
-
 }
 
 void manual_parallel_propagate(System &old_system, System &new_system) {

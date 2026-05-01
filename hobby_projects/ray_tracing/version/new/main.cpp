@@ -20,13 +20,15 @@ glm::vec3 initFront{0.001f, 0.01f, -1};
 glm::vec3 initUp{0.01f, 1, 0.01f};
 
 // SOURCE
-glm::vec3 sourcePosition{-10.0f, -25.0f, -100.0f};
+glm::vec3 sourcePosition{-10.0f, -25.0f, -60.0f};
 float sourceRadius = 10.0;
 
 
 int main(int argc, char* argv[]){
 
     std::unique_ptr<Window> window = std::make_unique<Window>(screenWidth, screenHeight, "Simulation Window");
+    glfwSetCursorPos(window->instance, screenWidth / 2.0, screenHeight / 2.0);
+
     std::unique_ptr<DisplayDrawer> drawer = std::make_unique<DisplayDrawer>(argv, vertDir, fragDir);
 
     int pixelWidth, pixelHeight;
@@ -63,8 +65,8 @@ int main(int argc, char* argv[]){
         }    
         
         glClear(GL_COLOR_BUFFER_BIT);
-        glm::mat4 model = camera.look_at_matrix;
-        glm::mat3 viewRot = glm::inverse(glm::mat3(model));
+        glm::mat4 view = camera.look_at_matrix;
+        glm::mat3 viewRot = glm::inverse(glm::mat3(view));
         glm::vec3 sourceSphPos = convert_to_spherical(viewRot * sourcePosition);
 
         glUniform3fv(cameraLoc, 1, &camera.position[0]);
